@@ -80,7 +80,6 @@
         .button-4 { background-color: #96CEB4; }
         .button-5 { background-color: #FFEEAD; color: #333; }
 
-
         .records {
             background-color: white;
             border-radius: 15px;
@@ -102,12 +101,34 @@
             border-radius: 10px;
             font-size: 14px;
             color: #333;
-            cursor: pointer;
             transition: background-color 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .record-item:hover {
             background-color: #f0f0f0;
+        }
+
+        .record-content {
+            flex: 1;
+            cursor: pointer;
+        }
+
+        .delete-button {
+            background-color: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 5px 10px;
+            margin-left: 10px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .delete-button:hover {
+            background-color: #cc0000;
         }
 
         .today-statistics {
@@ -212,7 +233,6 @@
         }
     </style>
 </head>
-
 <body>
     <div class="container">
         <h1 class="title">宝宝茁壮成长吖~</h1>
@@ -228,7 +248,15 @@
         <!-- 吃饭选项 -->
         <div id="feedingOptions" class="function-buttons" style="display: none;">
             <button class="function-button" style="background-color: #FF9F9F;" onclick="recordAction('母乳'); hideFeedingOptions()">母乳</button>
-            <button class="function-button" style="background-color: #4ECDC4;" onclick="recordAction('奶粉'); hideFeedingOptions()">奶粉</button>
+            <button class="function-button" style="background-color: #4ECDC4;" onclick="showFormulaOptions()">奶粉</button>
+        </div>
+
+        <!-- 奶粉选项 -->
+        <div id="formulaOptions" class="function-buttons" style="display: none;">
+            <button class="function-button" style="background-color: #4ECDC4;" onclick="recordFormula(30); hideFormulaOptions()">30cc</button>
+            <button class="function-button" style="background-color: #4ECDC4;" onclick="recordFormula(60); hideFormulaOptions()">60cc</button>
+            <button class="function-button" style="background-color: #4ECDC4;" onclick="recordFormula(90); hideFormulaOptions()">90cc</button>
+            <button class="function-button" style="background-color: #4ECDC4;" onclick="recordFormula(120); hideFormulaOptions()">120cc</button>
         </div>
 
         <!-- 睡觉选项 -->
@@ -272,8 +300,6 @@
     </div>
 
     <script>
-
-
         let records = [];
         let currentEditingIndex = -1;
         let sleepStartTime = null;
@@ -312,6 +338,17 @@
             document.getElementById('sleepOptions').style.display = 'none';
         }
 
+        // 显示奶粉选项
+        function showFormulaOptions() {
+            document.getElementById('formulaOptions').style.display = 'flex';
+            document.getElementById('feedingOptions').style.display = 'none';
+        }
+
+        // 隐藏奶粉选项
+        function hideFormulaOptions() {
+            document.getElementById('formulaOptions').style.display = 'none';
+        }
+
         // 记录操作
         function recordAction(action) {
             const now = new Date();
@@ -323,12 +360,15 @@
             refreshRecordsList();
         }
 
+        // 记录奶粉量
+        function recordFormula(amount) {
+            recordAction(`奶粉${amount}cc`);
+        }
+
         // 开始睡眠
         function startSleep() {
-            if (!sleepStartTime) {
-                sleepStartTime = new Date();
-                recordAction('睡了');
-            }
+            sleepStartTime = new Date();
+            recordAction('睡了');
         }
 
         // 结束睡眠
@@ -345,6 +385,9 @@
                     recordAction('醒了');
                 }
                 sleepStartTime = null;
+            } else {
+                // 如果没有开始时间，直接记录醒了
+                recordAction('醒了');
             }
         }
 
@@ -358,8 +401,11 @@
         function refreshRecordsList() {
             const recordsList = document.getElementById('recordsList');
             recordsList.innerHTML = records.map((record, index) => `
-                <div class="record-item" onclick="editTime(${index})">
-                    ${formatDateTime(record.time)} - ${record.action}
+                <div class="record-item">
+                    <div class="record-content" onclick="editTime(${index})">
+                        ${formatDateTime(record.time)} - ${record.action}
+                    </div>
+                    <button class="delete-button" onclick="deleteRecord(${index})">删除</button>
                 </div>
             `).join('');
         }
@@ -440,12 +486,24 @@
             // 计算各项统计
             const stats = {
                 motherMilk: records.filter(r => r.action === '母乳'),
-                formulaMilk: records.filter(r => r.action === '奶粉'),
+                formulaMilk: records.filter(r => r.action.startsWith('奶粉')),
                 pee: records.filter(r => r.action === '嘘嘘了'),
                 poop: records.filter(r => r.action === '拉粑粑了'),
                 vitaminD: records.filter(r => r.action === '吃维生素D了'),
-                sleep: records.filter(r => r.action === '睡了') // 只统计睡了的次数
+                sleep: records.filter(r => r.action === '睡了')
             };
+
+            // 计算奶粉总量
+            const totalFormula = stats.formulaMilk.reduce((sum, record) => {
+                const amount = parseInt(record.action.match(/\d+/)[0]);
+                return sum + amount;
+            }, 0);
+
+            // 计算睡眠时长
+            const sleepPeriods = calculateSleepStats(records);
+            const totalSleepMinutes = sleepPeriods.reduce((sum, period) => sum + period.duration, 0);
+            const sleepHours = Math.floor(totalSleepMinutes / 60);
+            const sleepMinutes = totalSleepMinutes % 60;
 
             // 生成统计HTML
             let statsHtml = '';
@@ -460,8 +518,17 @@
                         sleep: '睡眠'
                     }[key];
 
+                    let content = '';
+                    if (key === 'formulaMilk') {
+                        content = `<p>${title}：${items.length}次（总量${totalFormula}cc）</p>`;
+                    } else if (key === 'sleep') {
+                        content = `<p>${title}：${items.length}次（总时长${sleepHours}小时${sleepMinutes}分钟）</p>`;
+                    } else {
+                        content = `<p>${title}：${items.length}次</p>`;
+                    }
+
                     statsHtml += `<div class="stat-item">
-                        <p>${title}：${items.length}次</p>
+                        ${content}
                         <div class="time-list">
                             ${items.map(item => formatDateTime(item.time)).join('<br>')}
                         </div>
@@ -471,6 +538,29 @@
 
             todayStatsList.innerHTML = statsHtml;
             todayStats.style.display = 'block';
+        }
+
+        // 计算睡眠统计
+        function calculateSleepStats(records) {
+            let sleepPeriods = [];
+            let startTime = null;
+
+            for (let record of records) {
+                if (record.action === '睡了') {
+                    startTime = new Date(record.time);
+                } else if (record.action.includes('醒了') && startTime) {
+                    let endTime = new Date(record.time);
+                    let duration = Math.round((endTime - startTime) / (1000 * 60)); // 转换为分钟
+                    sleepPeriods.push({
+                        start: startTime,
+                        end: endTime,
+                        duration: duration
+                    });
+                    startTime = null;
+                }
+            }
+
+            return sleepPeriods;
         }
 
         // 收工并保存历史记录
@@ -487,13 +577,23 @@
             const now = new Date();
             const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
             
+            // 计算奶粉总量
+            const formulaRecords = records.filter(r => r.action.startsWith('奶粉'));
+            const totalFormula = formulaRecords.reduce((sum, record) => {
+                const amount = parseInt(record.action.match(/\d+/)[0]);
+                return sum + amount;
+            }, 0);
+            
             // 计算统计数据
             let stats = {
                 date: today,
                 records: records,
                 summary: {
                     motherMilk: records.filter(r => r.action === '母乳').length,
-                    formulaMilk: records.filter(r => r.action === '奶粉').length,
+                    formulaMilk: {
+                        count: formulaRecords.length,
+                        total: totalFormula
+                    },
                     pee: records.filter(r => r.action === '嘘嘘了').length,
                     poop: records.filter(r => r.action === '拉粑粑了').length,
                     vitaminD: records.filter(r => r.action === '吃维生素D了').length,
@@ -525,29 +625,6 @@
             alert('今日记录已保存！');
         }
 
-        // 计算睡眠统计
-        function calculateSleepStats(records) {
-            let sleepPeriods = [];
-            let startTime = null;
-
-            for (let record of records) {
-                if (record.action === '睡了') {
-                    startTime = new Date(record.time);
-                } else if (record.action.includes('醒了') && startTime) {
-                    let endTime = new Date(record.time);
-                    let duration = Math.round((endTime - startTime) / (1000 * 60)); // 转换为分钟
-                    sleepPeriods.push({
-                        start: startTime,
-                        end: endTime,
-                        duration: duration
-                    });
-                    startTime = null;
-                }
-            }
-
-            return sleepPeriods;
-        }
-
         // 显示历史记录
         function showHistory() {
             const historyList = document.getElementById('historyList');
@@ -573,19 +650,34 @@
                 const sleepHours = Math.floor(totalSleepMinutes / 60);
                 const sleepMinutes = totalSleepMinutes % 60;
 
+                // 生成当日记录列表
+                const recordsList = day.records.map(record => {
+                    const recordTime = new Date(record.time);
+                    return `${recordTime.getHours().toString().padStart(2, '0')}:${recordTime.getMinutes().toString().padStart(2, '0')} - ${record.action}`;
+                }).join('<br>');
+
                 return `
                     <div class="stat-item">
                         <div class="history-date" onclick="toggleHistoryDetails(${index})">
                             ${dateStr}
                         </div>
                         <div class="history-details" id="history-details-${index}">
-                            <p>母乳：${day.summary.motherMilk}次</p>
-                            <p>奶粉：${day.summary.formulaMilk}次</p>
-                            <p>嘘嘘：${day.summary.pee}次</p>
-                            <p>拉粑粑：${day.summary.poop}次</p>
-                            <p>维生素D：${day.summary.vitaminD}次</p>
-                            <p>睡眠：${day.summary.sleep.length}次</p>
-                            <p>睡眠时长：${sleepHours}小时${sleepMinutes}分钟</p>
+                            <div class="stat-item">
+                                <h4>当日记录</h4>
+                                <div class="time-list">
+                                    ${recordsList}
+                                </div>
+                            </div>
+                            <div class="stat-item">
+                                <h4>统计信息</h4>
+                                <p>母乳：${day.summary.motherMilk}次</p>
+                                <p>奶粉：${day.summary.formulaMilk.count}次（总量${day.summary.formulaMilk.total}cc）</p>
+                                <p>嘘嘘：${day.summary.pee}次</p>
+                                <p>拉粑粑：${day.summary.poop}次</p>
+                                <p>维生素D：${day.summary.vitaminD}次</p>
+                                <p>睡眠：${day.summary.sleep.length}次</p>
+                                <p>睡眠时长：${sleepHours}小时${sleepMinutes}分钟</p>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -599,7 +691,15 @@
             const details = document.getElementById(`history-details-${index}`);
             details.style.display = details.style.display === 'none' ? 'block' : 'none';
         }
+
+        // 删除记录
+        function deleteRecord(index) {
+            if (confirm('确定要删除这条记录吗？')) {
+                records.splice(index, 1);
+                saveRecords();
+                refreshRecordsList();
+            }
+        }
     </script>
 </body>
-</html>
-
+</html> 
